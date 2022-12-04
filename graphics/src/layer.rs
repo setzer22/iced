@@ -132,13 +132,10 @@ impl<'a> Layer<'a> {
             } => {
                 let layer = &mut layers[current_layer];
 
-                let size_v = Vector::new(*size, 0.0);
-                let size = transformation.transform_vector(size_v).x;
-
                 layer.text.push(Text {
                     content,
                     bounds: transformation.transform_rectangle(*bounds),
-                    size,
+                    size: transformation.transform_scalar(*size),
                     color: color.into_linear(),
                     font: *font,
                     horizontal_alignment: *horizontal_alignment,
@@ -156,14 +153,15 @@ impl<'a> Layer<'a> {
 
                 // TODO: Move some of these computations to the GPU (?)
                 let new_bounds = transformation.transform_rectangle(*bounds);
+
                 layer.quads.push(Quad {
                     position: [new_bounds.x, new_bounds.y],
                     size: [new_bounds.width, new_bounds.height],
                     color: match background {
                         Background::Color(color) => color.into_linear(),
                     },
-                    border_radius: *border_radius,
-                    border_width: *border_width,
+                    border_radius: transformation.transform_scalar(*border_radius),
+                    border_width: transformation.transform_scalar(*border_width),
                     border_color: border_color.into_linear(),
                 });
             }

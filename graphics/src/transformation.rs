@@ -58,6 +58,13 @@ impl Transformation {
         Vector::new(p.x, p.y)
     }
 
+    /// Applies this transformation to the given `scalar`. Only scaling is
+    /// applied TODO: This is a very awkward API. Let's not use Transformation
+    /// in the layer computation.
+    pub fn transform_scalar(&self, s: f32) -> f32 {
+        self.0.transform_vector3(glam::Vec3::new(s, 0.0, 0.0)).x
+    }
+
     /// Applies this transformation to the given `rectangle`.
     ///
     /// NOTE: This operation is not well-defined when the transformation
