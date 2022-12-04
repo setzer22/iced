@@ -10,7 +10,7 @@ pub use mesh::Mesh;
 pub use quad::Quad;
 pub use text::Text;
 
-use crate::alignment;
+use crate::{alignment, Transformation};
 use crate::{
     Background, Font, Point, Primitive, Rectangle, Size, Vector, Viewport,
 };
@@ -32,9 +32,6 @@ pub struct Layer<'a> {
 
     /// The images of the [`Layer`].
     pub images: Vec<Image>,
-
-    /// TEMP: REMOVE
-    pub scale: f32,
 }
 
 impl<'a> Layer<'a> {
@@ -46,13 +43,7 @@ impl<'a> Layer<'a> {
             meshes: Vec::new(),
             text: Vec::new(),
             images: Vec::new(),
-            scale: 1.0,
         }
-    }
-
-    /// Applies a scale to the [`Layer`]
-    pub fn with_scale(self, scale: f32) -> Self {
-        Self { scale, ..self }
     }
 
     /// Creates a new [`Layer`] for the provided overlay text.
@@ -102,7 +93,7 @@ impl<'a> Layer<'a> {
         for primitive in primitives {
             Self::process_primitive(
                 &mut layers,
-                Vector::new(0.0, 0.0),
+                Transformation::identity(),
                 primitive,
                 0,
             );
@@ -113,7 +104,7 @@ impl<'a> Layer<'a> {
 
     fn process_primitive(
         layers: &mut Vec<Self>,
-        translation: Vector,
+        transformation: Transformation,
         primitive: &'a Primitive,
         current_layer: usize,
     ) {
@@ -124,7 +115,7 @@ impl<'a> Layer<'a> {
                 for primitive in primitives {
                     Self::process_primitive(
                         layers,
-                        translation,
+                        transformation,
                         primitive,
                         current_layer,
                     )
@@ -141,10 +132,13 @@ impl<'a> Layer<'a> {
             } => {
                 let layer = &mut layers[current_layer];
 
+                let size_v = Vector::new(*size, 0.0);
+                let size = transformation.transform_vector(size_v).x;
+
                 layer.text.push(Text {
                     content,
-                    bounds: *bounds + translation,
-                    size: *size,
+                    bounds: transformation.transform_rectangle(*bounds),
+                    size,
                     color: color.into_linear(),
                     font: *font,
                     horizontal_alignment: *horizontal_alignment,
@@ -161,12 +155,10 @@ impl<'a> Layer<'a> {
                 let layer = &mut layers[current_layer];
 
                 // TODO: Move some of these computations to the GPU (?)
+                let new_bounds = transformation.transform_rectangle(*bounds);
                 layer.quads.push(Quad {
-                    position: [
-                        bounds.x + translation.x,
-                        bounds.y + translation.y,
-                    ],
-                    size: [bounds.width, bounds.height],
+                    position: [new_bounds.x, new_bounds.y],
+                    size: [new_bounds.width, new_bounds.height],
                     color: match background {
                         Background::Color(color) => color.into_linear(),
                     },
@@ -182,15 +174,17 @@ impl<'a> Layer<'a> {
             } => {
                 let layer = &mut layers[current_layer];
 
-                let bounds = Rectangle::new(
-                    Point::new(translation.x, translation.y),
-                    *size,
-                );
+                // TODO: Can't apply scale to a mesh...
+                let origin =
+                    transformation.transform_point(Point::new(0.0, 0.0));
+
+                let bounds =
+                    Rectangle::new(Point::new(origin.x, origin.y), *size);
 
                 // Only draw visible content
                 if let Some(clip_bounds) = layer.bounds.intersection(&bounds) {
                     layer.meshes.push(Mesh {
-                        origin: Point::new(translation.x, translation.y),
+                        origin,
                         buffers,
                         clip_bounds,
                         style,
@@ -199,19 +193,19 @@ impl<'a> Layer<'a> {
             }
             Primitive::Clip { bounds, content } => {
                 let layer = &mut layers[current_layer];
-                let translated_bounds = *bounds + translation;
+                let transformed_bounds =
+                    transformation.transform_rectangle(*bounds);
 
                 // Only draw visible content
                 if let Some(clip_bounds) =
-                    layer.bounds.intersection(&translated_bounds)
+                    layer.bounds.intersection(&transformed_bounds)
                 {
-                    let clip_layer =
-                        Layer::new(clip_bounds).with_scale(layer.scale);
+                    let clip_layer = Layer::new(clip_bounds);
                     layers.push(clip_layer);
 
                     Self::process_primitive(
                         layers,
-                        translation,
+                        transformation,
                         content,
                         layers.len() - 1,
                     );
@@ -223,34 +217,24 @@ impl<'a> Layer<'a> {
             } => {
                 Self::process_primitive(
                     layers,
-                    translation + *new_translation,
+                    transformation
+                        .translated(new_translation.x, new_translation.y),
                     content,
                     current_layer,
                 );
             }
-            // TEMP: Create a new layer for each scale since we can
-            // apply different scale factors per layer.
-            //
-            // It'd be better if this can be instanced uniform data to
-            // apply scaling per primitive in GPU
             Primitive::Scale { scale, content } => {
-                let layer = &mut layers[current_layer];
-                let scaled_layer =
-                    Layer::new(layer.bounds).with_scale(*scale * layer.scale);
-
-                layers.push(scaled_layer);
-
                 Self::process_primitive(
                     layers,
-                    translation,
+                    transformation.scaled(*scale, *scale),
                     content,
-                    layers.len() - 1,
+                    current_layer,
                 );
             }
             Primitive::Cached { cache } => {
                 Self::process_primitive(
                     layers,
-                    translation,
+                    transformation,
                     cache,
                     current_layer,
                 );
@@ -260,7 +244,7 @@ impl<'a> Layer<'a> {
 
                 layer.images.push(Image::Raster {
                     handle: handle.clone(),
-                    bounds: *bounds + translation,
+                    bounds: transformation.transform_rectangle(*bounds),
                 });
             }
             Primitive::Svg { handle, bounds } => {
@@ -268,7 +252,7 @@ impl<'a> Layer<'a> {
 
                 layer.images.push(Image::Vector {
                     handle: handle.clone(),
-                    bounds: *bounds + translation,
+                    bounds: transformation.transform_rectangle(*bounds),
                 });
             }
         }

@@ -119,8 +119,6 @@ impl Backend {
             return;
         }
 
-        let scale_factor = layer.scale * scale_factor;
-
         if !layer.quads.is_empty() {
             self.quad_pipeline.draw(
                 device,
