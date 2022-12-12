@@ -57,36 +57,6 @@ impl Transformation {
             .transform_vector3(glam::Vec3::new(vector.x, vector.y, 0.0));
         Vector::new(p.x, p.y)
     }
-
-    /// Applies this transformation to the given `scalar`. Only scaling is
-    /// applied TODO: This is a very awkward API. Let's not use Transformation
-    /// in the layer computation.
-    pub fn transform_scalar(&self, s: f32) -> f32 {
-        self.0.transform_vector3(glam::Vec3::new(s, 0.0, 0.0)).x
-    }
-
-    /// Applies this transformation to the given `rectangle`.
-    ///
-    /// NOTE: This operation is not well-defined when the transformation
-    /// contains something other than translation and scaling because a
-    /// rectangle is an axis-aligned bounding box, so it can't be rotated.
-    pub fn transform_rectangle(&self, rectangle: Rectangle) -> Rectangle {
-        let top_left = Point::new(rectangle.x, rectangle.y);
-        let bottom_right = Point::new(
-            rectangle.x + rectangle.width,
-            rectangle.y + rectangle.height,
-        );
-
-        let new_top_left = self.transform_point(top_left);
-        let new_bottom_right = self.transform_point(bottom_right);
-
-        Rectangle {
-            x: new_top_left.x,
-            y: new_top_left.y,
-            width: new_bottom_right.x - new_top_left.x,
-            height: new_bottom_right.y - new_top_left.y,
-        }
-    }
 }
 
 impl Mul for Transformation {
@@ -112,5 +82,66 @@ impl From<Transformation> for [f32; 16] {
 impl From<Transformation> for Mat4 {
     fn from(transformation: Transformation) -> Self {
         transformation.0
+    }
+}
+
+/// A transformation consisting only of translation and uniform scaling
+/// operations.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TranslateScale {
+    translation: Vector,
+    scale: f32,
+}
+
+impl TranslateScale {
+    /// Returns the identity transformation.
+    pub fn identity() -> Self {
+        Self {
+            translation: Vector::new(0.0, 0.0),
+            scale: 1.0,
+        }
+    }
+
+    /// Returns a new transformation, translated by the given vector
+    pub fn translated(&self, translation: Vector) -> Self {
+        Self {
+            translation: self.translation + translation,
+            scale: self.scale,
+        }
+    }
+
+    /// Returns a new transformation, scaled by the given amount
+    pub fn scaled(&self, scale: f32) -> Self {
+        let new_scale = self.scale * scale;
+        Self {
+            translation: self.translation * scale,
+            scale: new_scale,
+        }
+    }
+
+    /// Applies the scaling and translation of this transformation to the given
+    /// `point`.
+    pub fn transform_point(&self, point: Point) -> Point {
+        Point::new(point.x * self.scale, point.y * self.scale) + self.translation
+    }
+
+    /// Applies the scaling of this transformation to the given `scalar`.
+    /// Translation is ignored.
+    pub fn transform_scalar(&self, s: f32) -> f32 {
+        s * self.scale
+    }
+
+    /// Applies the scaling and translation of this transformation to the given
+    /// `rectangle`. The rectangles's dimensions may be set to infinity.
+    pub fn transform_rectangle(&self, rectangle: Rectangle) -> Rectangle {
+        let top_left =
+            self.transform_point(Point::new(rectangle.x, rectangle.y));
+
+        Rectangle {
+            x: top_left.x,
+            y: top_left.y,
+            width: rectangle.width * self.scale,
+            height: rectangle.height * self.scale,
+        }
     }
 }

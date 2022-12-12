@@ -10,6 +10,7 @@ pub use mesh::Mesh;
 pub use quad::Quad;
 pub use text::Text;
 
+use crate::transformation::TranslateScale;
 use crate::{alignment, Transformation};
 use crate::{
     Background, Font, Point, Primitive, Rectangle, Size, Vector, Viewport,
@@ -93,7 +94,7 @@ impl<'a> Layer<'a> {
         for primitive in primitives {
             Self::process_primitive(
                 &mut layers,
-                Transformation::identity(),
+                TranslateScale::identity(),
                 primitive,
                 0,
             );
@@ -104,7 +105,7 @@ impl<'a> Layer<'a> {
 
     fn process_primitive(
         layers: &mut Vec<Self>,
-        transformation: Transformation,
+        transformation: TranslateScale,
         primitive: &'a Primitive,
         current_layer: usize,
     ) {
@@ -131,6 +132,10 @@ impl<'a> Layer<'a> {
                 vertical_alignment,
             } => {
                 let layer = &mut layers[current_layer];
+
+                if bounds.width == f32::INFINITY {
+                    dbg!(transformation.transform_rectangle(*bounds));
+                }
 
                 layer.text.push(Text {
                     content,
@@ -216,7 +221,7 @@ impl<'a> Layer<'a> {
                 Self::process_primitive(
                     layers,
                     transformation
-                        .translated(new_translation.x, new_translation.y),
+                        .translated(*new_translation),
                     content,
                     current_layer,
                 );
@@ -224,7 +229,7 @@ impl<'a> Layer<'a> {
             Primitive::Scale { scale, content } => {
                 Self::process_primitive(
                     layers,
-                    transformation.scaled(*scale, *scale),
+                    transformation.scaled(*scale),
                     content,
                     current_layer,
                 );
